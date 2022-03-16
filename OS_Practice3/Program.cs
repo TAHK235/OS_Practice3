@@ -1,58 +1,85 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Threading;
 
 namespace OS_Practice3
 {
     internal static class Program
     {
+        private const int Producers = 3;
+        private const int ProducersTimeout = 300;
+
+        private const int Consumers = 2;
+        private const int ConsumersTimeout = 500;
+
+        private const int Capacity = 200;
+
+        private static bool _stopProducers;
+        private static bool _pauseProducers;
+
+        private static readonly BlockingCollection<int> Queue = new BlockingCollection<int>(Capacity);
+
         private static void Main()
         {
-            DataQueue queue = new DataQueue(200);
-            Producer producer = new Producer(queue);
-            Consumer consumer = new Consumer(queue);
+            Thread[] prodThreads = new Thread[Producers];
+            Thread[] consThreads = new Thread[Consumers];
 
-            Thread t1 = new Thread(producer.Start)
+            for (int i = 0; i < Producers; i++)
             {
-                Name = "1"
-            };
-            Thread t2 = new Thread(producer.Start)
+                prodThreads[i] = new Thread(Produce) {Name = $"Производитель {i + 1}"};
+                prodThreads[i].Start();
+            }
+
+            for (int i = 0; i < Consumers; i++)
             {
-                Name = "2"
-            };
-            Thread t3 = new Thread(producer.Start)
+                consThreads[i] = new Thread(Consume) {Name = $"Потребитель {i + 1}"};
+                consThreads[i].Start();
+            }
+
+            do
             {
-                Name = "3"
-            };
-            Thread t4 = new Thread(consumer.Run)
+                while (!Console.KeyAvailable)
+                {
+                    if (Queue.Count >= 100)
+                        _pauseProducers = true;
+                    if (Queue.Count <= 80)
+                        _pauseProducers = false;
+                }
+            } while (Console.ReadKey(true).Key != ConsoleKey.Q);
+
+            _stopProducers = true;
+            Console.WriteLine("Производители остановлены пользователем");
+        }
+
+        private static void Produce()
+        {
+            Random rnd = new Random();
+
+            while (true)
             {
-                Name = "4"
-            };
-            Thread t5 = new Thread(consumer.Run)
+                if (!_pauseProducers)
+                {
+                    Queue.Add(rnd.Next(1, 100));
+                    Console.WriteLine($"{Queue.Count}: элемент добавил {Thread.CurrentThread.Name}");
+                    Thread.Sleep(ProducersTimeout);
+                }
+
+                if (_stopProducers)
+                    return;
+            }
+        }
+
+        private static void Consume()
+        {
+            while (true)
             {
-                Name = "5"
-            };
+                Queue.Take();
+                Console.WriteLine($"{Queue.Count}: элемент взял {Thread.CurrentThread.Name}");
+                Thread.Sleep(ConsumersTimeout);
 
-            t1.Start();
-            t2.Start();
-            t3.Start();
-            t4.Start();
-            t5.Start();
-
-            Thread.Sleep(5000);
-
-            producer.Shutdown();
-
-            t1.Join();
-            t2.Join();
-            t3.Join();
-
-            consumer.Shutdown();
-
-            t4.Join();
-            t5.Join();
-
-
-            Console.WriteLine("Finish!");
+                if (Queue.Count <= 0)
+                    return;
+            }
         }
     }
 }
